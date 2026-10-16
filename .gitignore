@@ -1,0 +1,11 @@
+.venv
+venv
+
+data
+*.ipynb
+
+__pycache__/
+.vscode/
+
+.idea
+*.csv

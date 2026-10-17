@@ -30,32 +30,35 @@ from selenium.webdriver.support.ui import WebDriverWait
 LOGGER = logging.getLogger("rbc_parser")
 FEED_URL = "https://www.rbc.ru/short_news"
 TIME_PATTERN = re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b")
+
 CATEGORY_NAMES = {
     "Политика", "Экономика", "Общество", "Бизнес", "Технологии и медиа",
     "Финансы", "Спорт", "Недвижимость", "Авто", "РБК Образование",
     "Образование", "Инвестиции", "Биографии", "База знаний",
-    "Подписка на РБК", "Life",
+    "Подписка на РБК", "Life"
 }
-# Селекторы проверены по сохранённому HTML РБК от 16.10.2026.
+
 FEED_LINK_SELECTORS = (
     "article.info-block-custom-news a.info-block-title",
     "article.info-block a.info-block-title",
-    ".item__wrap a.item__link",  # резервный селектор старой разметки
-    "a.item__link",
+    ".item__wrap a.item__link",
+    "a.item__link"
 )
+
 TITLE_SELECTORS = ("a.info-block-title", ".item__title", ".item__title-wrap")
 CATEGORY_SELECTORS = (".meta-info-row-topic", ".item__category", ".item__rubric")
 TIME_SELECTORS = (".meta-info-row-date", ".item__time", ".item__date", "time")
+
 CONTENT_SELECTORS = (
     "[itemprop='articleBody']", ".article__text", ".article__content",
-    ".article__body", "article",
+    ".article__body", "article"
 )
 REMOVE_SELECTORS = (
     "script", "style", "noscript", "nav", "aside", "footer", "form",
     ".article__insert", ".article__banner", ".article__ad",
     ".article__inline-item", ".article__related", ".article__recommend",
     "[class*='advert']", "[class*='banner']", "[class*='recommend']",
-    "[class*='related']", "[class*='subscribe']", "[class*='paywall']",
+    "[class*='related']", "[class*='subscribe']", "[class*='paywall']"
 )
 
 
@@ -184,8 +187,6 @@ def load_page(driver: webdriver.Chrome, url: str, selector: str, timeout: int) -
         current = urlsplit(browser.current_url)
         if current.hostname != target.hostname or current.path.rstrip("/") != target.path.rstrip("/"):
             return False
-        # При page_load_strategy='none' ресурсы могут ещё грузиться:
-        # достаточно появления нужного элемента, readyState ждать не нужно.
         return bool(browser.find_elements(By.CSS_SELECTOR, selector))
 
     try:
@@ -219,8 +220,6 @@ def save_debug_snapshot(driver: webdriver.Chrome, debug_dir: Path, name: str) ->
         LOGGER.warning("Не получилось сохранить скриншот: %s", exc)
 
 
-# Рекламные/информационные всплывающие окна Popmechanic могут закрывать
-# кнопку подгрузки после нескольких прокруток ленты.
 POPUP_SELECTOR = ".popmechanic-content"
 POPUP_CLOSE_SELECTORS = (
     "[data-popmechanic-close]",
@@ -245,11 +244,7 @@ def popup_visible(driver: webdriver.Chrome) -> bool:
 
 
 def dismiss_popup(driver: webdriver.Chrome) -> bool:
-    """Закрывает только видимый Popmechanic стандартной кнопкой интерфейса.
 
-    Если окно не закрывается — не удаляем его из DOM и не нажимаем кнопку
-    под ним через JS. Пусть вызывающий код сохранит уже полученные данные.
-    """
     if not popup_visible(driver):
         return True
 
@@ -279,7 +274,7 @@ def dismiss_popup(driver: webdriver.Chrome) -> bool:
 
 
 def click_load_more(driver: webdriver.Chrome, timeout: int) -> bool:
-    """Возвращает False при неустранимом перекрытии кнопки."""
+
     for attempt in range(1, 4):
         if not dismiss_popup(driver):
             return False
@@ -307,7 +302,7 @@ def click_load_more(driver: webdriver.Chrome, timeout: int) -> bool:
 
 
 def save_feed_checkpoint(items: list[NewsArticle], directory: Path) -> Path:
-    """Хранит ссылки ДО обхода статей — на случай сбоя при листании."""
+
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "feed_checkpoint.json"
     records: dict[str, dict[str, Any]] = {}
@@ -336,16 +331,11 @@ class RBCNewsParser:
 
     @staticmethod
     def parse_feed(html: str) -> list[NewsArticle]:
-        """Читает карточки новостей; дополняет их метаданными Next.js JSON.
 
-        JSON с первоначальной лентой используется как резервный источник,
-        но данные из динамически подгруженных карточек также сохраняются.
-        """
         soup = BeautifulSoup(html, "lxml")
         now = datetime.now(timezone.utc).isoformat()
         results: dict[str, NewsArticle] = {}
 
-        # 1. HTML-карточки; после нажатия «Загрузить еще» они дополняются.
         candidates: list[Tag] = []
         for selector in FEED_LINK_SELECTORS:
             candidates = list(soup.select(selector))
@@ -389,8 +379,6 @@ class RBCNewsParser:
                 scraped_at=now,
             )
 
-        # 2. Встроенный JSON Next.js содержит полные даты (включая секунды).
-        # Он также помогает, когда верстка очередной раз меняется.
         node = soup.select_one("script#__NEXT_DATA__")
         if node:
             try:
@@ -519,8 +507,6 @@ class RBCNewsParser:
                 save_debug_snapshot(driver, debug_dir, "feed_error")
                 raise
 
-            # Сохраняем найденные ссылки после каждой удачной подгрузки.
-            # Даже если всплывающее окно остановит сбор, эти ссылки останутся.
             if checkpoint_dir is not None:
                 save_feed_checkpoint(cls.parse_feed(driver.page_source), checkpoint_dir)
 
@@ -533,7 +519,6 @@ class RBCNewsParser:
                 if current_count >= limit:
                     break
 
-                # При рекламе или временном перекрытии не падаем с исключением.
                 if not click_load_more(driver, timeout):
                     LOGGER.warning(
                         "Подгрузка остановлена на %d новостях: "
@@ -601,7 +586,6 @@ class RBCNewsParser:
                     LOGGER.warning("Не удалось полностью обработать %s: %s", item.url, exc)
                 result.append(item)
                 if checkpoint_dir is not None and (i % checkpoint_every == 0 or i == len(items)):
-                    # Промежуточное сохранение: сбой Chrome не потеряет всю работу.
                     save_news(result[-checkpoint_every:], checkpoint_dir)
                     LOGGER.info("Промежуточно сохранено %d/%d статей", i, len(items))
             return result
@@ -656,8 +640,8 @@ def save_news(items: list[NewsArticle], output: Path) -> tuple[Path, Path]:
 
 def main() -> None:
 
-    limit = 1000     # Цель — до 1000 уникальных новостей
-    more = 150       # Максимум подгрузок; раньше остановится при достижении limit
+    limit = 1000
+    more = 150
     headless = False
     delay = 3.0
     timeout = 40

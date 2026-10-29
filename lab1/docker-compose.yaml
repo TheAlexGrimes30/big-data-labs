@@ -1,0 +1,203 @@
+x-airflow-common: &airflow-common
+  build:
+    context: ..
+    dockerfile: lab1/Dockerfile
+  image: ${AIRFLOW_IMAGE_NAME:-rbc-airflow-lab1:3.1.7}
+  env_file:
+    - .env
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:-local-lab1-set-a-long-secret}
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: '120'
+    AIRFLOW__DAG_PROCESSOR__DAG_FILE_PROCESSOR_TIMEOUT: '180'
+    PYTHONPATH: /opt/airflow/dags:/opt/airflow
+    RBC_JSON_PATH: /opt/airflow/data/rbc_news.json
+    RBC_CSV_PATH: /opt/airflow/data/rbc_news.csv
+    ETL_POSTGRES_HOST: postgres-ods
+    ETL_POSTGRES_PORT: '5432'
+    ETL_POSTGRES_DB: ods
+    ETL_POSTGRES_USER: ${ODS_POSTGRES_USER:-etl_user}
+    ETL_POSTGRES_PASSWORD: ${ODS_POSTGRES_PASSWORD:-etl_password}
+    ETL_CLICKHOUSE_HOST: clickhouse
+    ETL_CLICKHOUSE_PORT: '8123'
+    ETL_CLICKHOUSE_DB: ods
+    ETL_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-etl_user}
+    ETL_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-etl_password}
+    ETL_MONGODB_URI: mongodb://${MONGO_ROOT_USER:-etl_user}:${MONGO_ROOT_PASSWORD:-etl_password}@mongodb:27017/?authSource=admin
+    ETL_MONGODB_DB: ods
+    ETL_REDIS_HOST: redis-ods
+    ETL_REDIS_PORT: '6379'
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+    - ./plugins:/opt/airflow/plugins
+    - ./data:/opt/airflow/data:ro
+    - ./scripts:/opt/airflow/scripts:ro
+    - ./reports:/opt/airflow/reports
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-deps
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - pg-airflow:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, airflow]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres-ods:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${ODS_POSTGRES_USER:-etl_user}
+      POSTGRES_PASSWORD: ${ODS_POSTGRES_PASSWORD:-etl_password}
+      POSTGRES_DB: ods
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - pg-ods:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    environment:
+      CLICKHOUSE_DB: ods
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-etl_user}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-etl_password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+    ports:
+      - '127.0.0.1:8123:8123'
+      - '127.0.0.1:9002:9000'
+    volumes:
+      - clickhouse-ods:/var/lib/clickhouse
+    ulimits:
+      nofile: {soft: 262144, hard: 262144}
+    healthcheck:
+      test: [CMD-SHELL, 'clickhouse-client --user "$${CLICKHOUSE_USER}" --password "$${CLICKHOUSE_PASSWORD}" --query "SELECT 1" >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-etl_user}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-etl_password}
+    ports:
+      - '127.0.0.1:27017:27017'
+    volumes:
+      - mongo-ods:/data/db
+    healthcheck:
+      test: [CMD-SHELL, 'mongosh --quiet -u "$${MONGO_INITDB_ROOT_USERNAME}" -p "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval "db.adminCommand({ping:1}).ok" | grep -q 1']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  redis-ods:
+    image: redis:7.2-bookworm
+    command: [redis-server, --appendonly, 'yes']
+    ports:
+      - '127.0.0.1:6380:6379'
+    volumes:
+      - redis-ods:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow-common
+    user: '0:0'
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        mkdir -p /opt/airflow/{dags,logs,config,plugins,reports}
+        /entrypoint airflow version
+        /entrypoint airflow config list >/dev/null
+        chown -R "$${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,config,plugins,reports}
+    environment:
+      <<: *airflow-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      <<: *airflow-deps
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, curl, --fail, http://localhost:8080/api/v2/version]
+      interval: 30s
+      timeout: 10s
+      retries: 8
+      start_period: 60s
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      <<: *airflow-deps
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, curl, --fail, http://localhost:8974/health]
+      interval: 30s
+      timeout: 10s
+      retries: 8
+      start_period: 60s
+    restart: unless-stopped
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      <<: *airflow-deps
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-tools:
+    <<: *airflow-common
+    profiles: [tools]
+    command: bash
+    depends_on:
+      <<: *airflow-deps
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  pg-airflow:
+  pg-ods:
+  clickhouse-ods:
+  mongo-ods:
+  redis-ods:

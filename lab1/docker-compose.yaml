@@ -15,7 +15,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    PYTHONPATH: /opt/airflow
+    AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: '120'
+    AIRFLOW__DAG_PROCESSOR__DAG_FILE_PROCESSOR_TIMEOUT: '180'
+    PYTHONPATH: /opt/airflow/dags:/opt/airflow
     RBC_JSON_PATH: /opt/airflow/data/rbc_news.json
     RBC_CSV_PATH: /opt/airflow/data/rbc_news.csv
     ETL_POSTGRES_HOST: postgres-ods

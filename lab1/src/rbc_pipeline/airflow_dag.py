@@ -1,17 +1,14 @@
-"""Factory for distinct Airflow DAGs with independent Extract/Load/Verify stages."""
+from .extract import validate_dataset
+from .storages import load_target, verify_dataset
 from datetime import datetime, timezone
-
-
 from airflow.sdk import dag, task
-
-from lab1.src.rbc_pipeline.extract import validate_dataset
-from lab1.src.rbc_pipeline.storages import load_target, verify_dataset
 
 
 def create_dag(dataset: str):
+
     @dag(
         dag_id=f"rbc_ods_{dataset}",
-        description=f"Lab1 RBC: {dataset} to PostgreSQL, ClickHouse, MongoDB, Redis",
+        description=f"RBC ETL: {dataset}",
         start_date=datetime(2026, 10, 1, tzinfo=timezone.utc),
         schedule=None,
         catchup=False,
@@ -20,6 +17,7 @@ def create_dag(dataset: str):
         tags=["lab1", "RBC", "ODS"],
     )
     def pipeline():
+
         @task
         def extract_and_validate() -> dict:
             return validate_dataset(dataset)
@@ -46,7 +44,13 @@ def create_dag(dataset: str):
 
         extract = extract_and_validate()
         verify = verify_all()
-        for load in [load_postgres(), load_clickhouse(), load_mongodb(), load_redis()]:
+
+        for load in [
+            load_postgres(),
+            load_clickhouse(),
+            load_mongodb(),
+            load_redis(),
+        ]:
             extract >> load >> verify
 
     return pipeline()

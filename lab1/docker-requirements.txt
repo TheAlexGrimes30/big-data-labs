@@ -1,0 +1,12 @@
+pandas
+requests
+beautifulsoup4
+lxml
+selenium
+
+sqlalchemy
+psycopg2-binary
+clickhouse-connect
+redis
+pymongo
+apache-airflow-providers-postgres

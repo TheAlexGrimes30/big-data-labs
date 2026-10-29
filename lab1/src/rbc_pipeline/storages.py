@@ -11,6 +11,13 @@ import logging
 import time
 from typing import Any
 
+import clickhouse_connect
+import psycopg2
+import redis
+from psycopg2.extras import execute_values
+from pydantic import Json
+from pymongo import MongoClient, ReplaceOne
+
 from .config import (DATASETS, TARGETS, clickhouse_kwargs, mongodb_uri,
                      postgres_kwargs, redis_kwargs)
 from .extract import extract_dataset
@@ -33,27 +40,22 @@ def redis_cat_key(dataset: str, category: str) -> str:
 
 
 def postgres_client():
-    import psycopg2
     return psycopg2.connect(**postgres_kwargs())
 
 
 def clickhouse_client():
-    import clickhouse_connect
     return clickhouse_connect.get_client(**clickhouse_kwargs())
 
 
 def mongodb_client():
-    from pymongo import MongoClient
     return MongoClient(mongodb_uri(), serverSelectionTimeoutMS=15000)
 
 
 def redis_client():
-    import redis
     return redis.Redis(**redis_kwargs())
 
 
 def load_postgres(dataset: str, rows: list[dict]) -> int:
-    from psycopg2.extras import Json, execute_values
 
     table = table_name(dataset)
     with postgres_client() as conn:
@@ -95,8 +97,6 @@ def load_clickhouse(dataset: str, rows: list[dict]) -> int:
             ) ENGINE = ReplacingMergeTree(version)
             ORDER BY row_id
         """)
-        # ReplacingMergeTree keeps the highest version per key on FINAL reads.
-        # Physical duplicates may remain until background merges.
         version = time.time_ns()
         if rows:
             ch.insert(f"ods.{table}", [
@@ -109,7 +109,6 @@ def load_clickhouse(dataset: str, rows: list[dict]) -> int:
 
 
 def load_mongodb(dataset: str, rows: list[dict]) -> int:
-    from pymongo import ReplaceOne
 
     client = mongodb_client()
     try:

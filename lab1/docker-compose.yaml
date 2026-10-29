@@ -1,7 +1,7 @@
-# ЛР1: компактная версия Airflow 3.1.7 с LocalExecutor (локальная разработка).
-# Исходная конфигурация пользователя с CeleryExecutor сохранена в docs/.
 x-airflow-common: &airflow-common
-  build: .
+  build:
+    context: ..
+    dockerfile: lab1/Dockerfile
   image: ${AIRFLOW_IMAGE_NAME:-rbc-airflow-lab1:3.1.7}
   env_file:
     - .env
@@ -32,7 +32,7 @@ x-airflow-common: &airflow-common
     ETL_MONGODB_DB: ods
     ETL_REDIS_HOST: redis-ods
     ETL_REDIS_PORT: '6379'
-  volumes: &airflow-volumes
+  volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./config:/opt/airflow/config

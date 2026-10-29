@@ -53,7 +53,6 @@ def extract_dataset(dataset: str, *, json_file: Path | None = None,
                     csv_file: Path | None = None) -> list[dict[str, Any]]:
     if dataset not in DATASETS:
         raise ValueError(f"Unknown feed: {dataset}")
-    # Distinct Extract operations, suited to the different raw entities.
     if dataset == "news_content":
         news = read_json(json_file)
         rows = [

@@ -1,10 +1,11 @@
 """Factory for distinct Airflow DAGs with independent Extract/Load/Verify stages."""
 from datetime import datetime, timezone
 
+
 from airflow.sdk import dag, task
 
-from .extract import validate_dataset
-from .storages import load_target, verify_dataset
+from lab1.src.rbc_pipeline.extract import validate_dataset
+from lab1.src.rbc_pipeline.storages import load_target, verify_dataset
 
 
 def create_dag(dataset: str):

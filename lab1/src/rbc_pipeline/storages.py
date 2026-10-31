@@ -14,8 +14,7 @@ from typing import Any
 import clickhouse_connect
 import psycopg2
 import redis
-from psycopg2.extras import execute_values
-from pydantic import Json
+from psycopg2.extras import Json, execute_values
 from pymongo import MongoClient, ReplaceOne
 
 from .config import (DATASETS, TARGETS, clickhouse_kwargs, mongodb_uri,
